@@ -448,8 +448,9 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
   const cellUV = vec2(fract(gridU), fract(gridV));
   const fw = vec2(fwidth(gridU), fwidth(gridV));
 
-  // Ground floor is strictly floor index 0 (gridV < 1.0) so floor 1 is never sliced in half!
-  const floor0 = float(1.0).sub(step(1.0, gridV));
+  // Ground floor is strictly floor index 0 (0.0 <= gridV < 1.0) so floor 1 is never sliced in half and foundation
+  // skirts below ground (gridV < 0) are never mistaken for ground-floor storefronts or doorways!
+  const floor0 = step(0.0, gridV).mul(float(1.0).sub(step(1.0, gridV)));
   const wall = float(1.0).sub(isRoof);
   const isGroundFloor = floor0.mul(float(1.0).sub(step(WALL_KINDS.shop + 0.5, kind)));
   const blank = step(WALL_KINDS.lotLine - 0.5, kind).mul(wall);
@@ -464,7 +465,7 @@ function facadeCell(windowWidth, floorHeight, boxLocal, cornerPier = 0) {
   if (boxLocal) {
     const top = vCoord.add(fromTop);
     const floorBase = floor(gridV).mul(floorHeight);
-    const whole = step(top.sub(wallH).sub(0.05), floorBase).mul(step(floorBase.add(floorHeight), top.add(0.05)));
+    const whole = step(max(top.sub(wallH), 0.0).sub(0.05), floorBase).mul(step(floorBase.add(floorHeight), top.add(0.05)));
     partial = float(1.0).sub(whole).mul(wall);
     coping = float(1.0).sub(step(0.32, fromTop)).mul(wall);
   }
@@ -891,8 +892,9 @@ function createPreWarBuildingMaterial(opts = {}) {
     });
 
     const wallTint = mix(mix(cStone, backTint, back), signPaint.xyz, signPaint.w);
-    // Trim stone on the band courses, the storefront fascia and the coping capping every wall
-    const trimMix = max(isCornice.mul(0.62).add(isGroundFloor.mul(0.28)), coping.mul(0.8));
+    // Trim stone on the band courses, the storefront fascia, the foundation plinth and the coping capping every wall
+    const isPlinth = float(1.0).sub(step(0.22, vCoord)).mul(float(1.0).sub(isRoof));
+    const trimMix = max(max(isCornice.mul(0.62).add(isGroundFloor.mul(0.28)), coping.mul(0.8)), isPlinth.mul(0.85));
     const masonryTint = mix(wallTint, cTrim, trimMix)
       .mul(brickRnd.mul(0.14).add(1.0))
       .mul(brickShiftVec);
@@ -1966,7 +1968,7 @@ function createBillboardCanvasTexture(themeKey) {
     ctx.fillStyle = '#ffdf78';
     ctx.font = '800 18px Inter, Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('★  BROADWAY MUSICAL SPECTACULAR  ★', 256, 46);
+    ctx.fillText('\u2605  BROADWAY MUSICAL SPECTACULAR  \u2605', 256, 46);
 
     ctx.fillStyle = '#ffffff';
     ctx.font = '900 44px Inter, Arial, sans-serif';
@@ -1984,7 +1986,7 @@ function createBillboardCanvasTexture(themeKey) {
 
     ctx.fillStyle = '#fff3c4';
     ctx.font = '800 20px Inter, Arial, sans-serif';
-    ctx.fillText('★★★★★  "UNFORGETTABLE!" — NY TIMES', 256, 185);
+    ctx.fillText('\u2605\u2605\u2605\u2605\u2605  "UNFORGETTABLE!" \u2014 NY TIMES', 256, 185);
 
     ctx.fillStyle = '#ffae42';
     ctx.font = '700 16px JetBrains Mono, monospace';
@@ -2164,7 +2166,7 @@ function createBillboardCanvasTexture(themeKey) {
     ctx.fillStyle = '#ffd15c';
     ctx.textAlign = 'right';
     ctx.font = '800 22px JetBrains Mono, monospace';
-    ctx.fillText('NYC 72°F ☀', 492, 33);
+    ctx.fillText('NYC 72\u00B0F \u2600', 492, 33);
 
     // Center headline graphic
     ctx.fillStyle = '#ffffff';
@@ -2520,7 +2522,7 @@ function createWaterMaterial() {
   const fresnel = pow(float(1.0).sub(clamp(dot(waterNormal, viewDir), 0.0, 1.0)), 5.0).mul(0.98).add(0.02);
   mat.metalnessNode = clamp(fresnel.mul(1.6), 0.0, 0.9);
 
-  // Sediment-laden estuary: deep blue-green grey ↔ silty olive grey; thin sunlit crests transmit a greener tint
+  // Sediment-laden estuary: deep blue-green grey <-> silty olive grey; thin sunlit crests transmit a greener tint
   mat.colorNode = Fn(() => {
     const silt = noise2D(positionWorld.xz.mul(0.0031).add(7.3));
     const body = mix(color(0x162d2c), color(0x2e3f36), smoothstep(0.25, 0.85, silt));
@@ -2638,7 +2640,7 @@ function createWaterMaterial() {
     const sV = tHit.mul(sigma2).add(fwidth(hRefl)).add(0.5);
     const sU = tHit.mul(sigma2).mul(max(viewDir.y, 0.05)).add(fwidth(u)).add(0.3);
 
-    // Lots 24 m wide with heights 0.3–1.3× the district skyline (averaged once a footprint spans several lots)
+    // Lots 24 m wide with heights 0.3-1.3x the district skyline (averaged once a footprint spans several lots)
     const lot = floor(u.div(24.0));
     const r1 = hash2D(vec2(lot, 5.1));
     const r2 = hash2D(vec2(lot, 9.7));

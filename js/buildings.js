@@ -622,26 +622,33 @@ function buildCityBlocks(scene) {
     let shopsOn = o.shops ?? 'all';
     if (typeof shopsOn === 'number') shopsOn = tone < shopsOn ? 'all' : 'none';
     const shops = { w: shopsOn !== 'none', e: shopsOn !== 'none', n: shopsOn === 'all', s: shopsOn === 'all' };
-    // Lamp: the whole building stands on the lowest ground under it, so it's never left floating on its low side and
-    // its storeys line up from part to part
-    let g = Infinity;
+    // Anchor the building datum to the highest ground under its footprint (maxG) so ground-floor doors, storefronts
+    // and awnings sit cleanly above the uphill sidewalk, while extending ground-floor parts down to minG - 0.4 so the
+    // downhill side rests on a solid masonry foundation plinth instead of floating
+    let minG = Infinity;
+    let maxG = -Infinity;
     for (const p of parts) {
       for (const [x, z] of [[p.x0, p.z0], [p.x1, p.z0], [p.x0, p.z1], [p.x1, p.z1], [(p.x0 + p.x1) * 0.5, (p.z0 + p.z1) * 0.5]]) {
-        g = Math.min(g, groundHeight(...toWorld(x, z)));
+        const gh = groundHeight(...toWorld(x, z));
+        if (gh < minG) minG = gh;
+        if (gh > maxG) maxG = gh;
       }
     }
+    const g = maxG;
     buildingGround = g;
     let top = parts[0];
     for (const p of parts) {
       const w = p.x1 - p.x0;
       const d = p.z1 - p.z0;
-      const h = p.y1 - p.y0;
-      const box = { x: p.x0 + w * 0.5, y: g + p.y0 + h * 0.5, z: p.z0 + d * 0.5, w, h, d, ground: g, faces: wallKinds(b, p, shops, o), tone };
+      const base = p.y0 <= EPS ? minG - 0.4 : g + p.y0;
+      const topY = g + p.y1;
+      const h = topY - base;
+      const box = { x: p.x0 + w * 0.5, y: base + h * 0.5, z: p.z0 + d * 0.5, w, h, d, ground: g, faces: wallKinds(b, p, shops, o), tone };
       buckets[mat].push(box);
       blk.facadeBoxes.push(box);
       blk.footprints.push({ x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1, h: p.y1, tone });
       if (p.y1 > blk.maxH) blk.maxH = p.y1;
-      pushCollider(p.x0, p.x1, p.z0, p.z1, g + p.y0, g + p.y1);
+      pushCollider(p.x0, p.x1, p.z0, p.z1, base, topY);
       if (p.y1 > top.y1 + EPS || (p.y1 > top.y1 - EPS && w * d > rectW(top) * rectD(top))) top = p;
     }
 
@@ -1420,9 +1427,9 @@ function buildCityBlocks(scene) {
     }
   }
 
-  // East River lots between 1st Ave and the FDR Drive (23rd–58th St), too narrow for regular lots: a 2-4 storey podium
+  // East River lots between 1st Ave and the FDR Drive (23rd-58th St), too narrow for regular lots: a 2-4 storey podium
   // with a slab rising from it, as tall as the lot is wide allows (Kips Bay & NYU Langone hospital slabs, glass towers
-  // on the old Con Ed site at 35th–41st St, Beekman & Sutton Place apartment towers). On the 42nd–45th St superblock
+  // on the old Con Ed site at 35th-41st St, Beekman & Sutton Place apartment towers). On the 42nd-45th St superblock
   // stands the United Nations Secretariat (1952): a blue-green curtain-wall slab between marble end walls, with the
   // low General Assembly hall and the North Lawn Building on the lots north of it.
   function riverfrontBlock(blk, cfg, x0, x1) {
@@ -2456,7 +2463,7 @@ function buildCityBlocks(scene) {
 
         const themeIdx = awningCount % signInsts.length;
         if (signCounts[themeIdx] < MAX_SIGNS_PER_THEME) {
-          dummy.position.set(a.x, 4.68, a.z);
+          dummy.position.set(a.x, a.y + 0.88, a.z);
           dummy.scale.set(0.28, 0.86, a.d * 0.92);
           dummy.updateMatrix();
           signInsts[themeIdx].setMatrixAt(signCounts[themeIdx]++, dummy.matrix);
@@ -2534,8 +2541,9 @@ function buildCityBlocks(scene) {
       const item = activeAwnings[i];
       const a = item.a;
       const dx = a.x - camX;
+      const dy = a.y - camY;
       const dz = a.z - camZ;
-      const d2 = dx * dx + dz * dz + camY * camY;
+      const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 > STORE_MAX_DIST * STORE_MAX_DIST) continue;
       const d = Math.sqrt(d2);
       const forwardDot = dx * fwdX + dz * fwdZ;
@@ -2558,8 +2566,8 @@ function buildCityBlocks(scene) {
         const sideDir = a.sideDir || 1;
         const outX = Math.cos(ry) * sideDir;
         const outZ = -Math.sin(ry) * sideDir;
-        spot.position.set(a.x + outX * 0.45, 4.35, a.z + outZ * 0.45);
-        spot.target.position.set(a.x + outX * 1.85, 0.0, a.z + outZ * 1.85);
+        spot.position.set(a.x + outX * 0.45, a.y + 0.55, a.z + outZ * 0.45);
+        spot.target.position.set(a.x + outX * 1.85, a.y - 3.8, a.z + outZ * 1.85);
         spot.target.updateMatrixWorld();
         spot.color.copy(storeThemeColors[themeIdx % storeThemeColors.length]);
         spot.intensity = STORE_SPOT_INTENSITY * fade;
