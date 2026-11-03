@@ -194,9 +194,8 @@ class LightingSystem {
     this.sunLight = new SunLight(0xffca92, 5.8);
     this.sunLight.position.copy(TIME_PRESETS.golden.sunDir);
     this.sunLight.castShadow = true;
-    // Two cascades share an atlas: use 3072px tiles when a 6144px texture fits, otherwise 2048px tiles.
-    const maxTex = (renderer && renderer.backend && renderer.backend.device && renderer.backend.device.limits.maxTextureDimension2D) || 4096;
-    const tile = maxTex >= 6144 ? 3072 : 2048;
+    // Two cascades share an atlas: use 2048px tiles (4096x2048 atlas) to balance street-level sharpness and GPU shadow fill.
+    const tile = 2048;
     this.sunLight.shadow.mapSize.set(tile, tile);
     this.sunLight.shadow.camera.near = 0.5;
     this.sunLight.shadow.camera.far = 300;
@@ -303,7 +302,7 @@ class LightingSystem {
     // stays sharp, and expand it with altitude (helicopter / observatory) so shadows reach all the way down to street level.
     // Lamp: altitude above the ground under the camera (terrain.js)
     const altitude = focusPos && Number.isFinite(focusPos.y) ? Math.max(0, focusPos.y - groundHeight(focusPos.x, focusPos.z)) : 0;
-    this.sunLight.shadow.camera.far = Math.max(300, Math.min(720, 260 + altitude * 1.6));
+    this.sunLight.shadow.camera.far = Math.max(220, Math.min(600, 200 + altitude * 1.5));
   }
 }
 

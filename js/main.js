@@ -47,8 +47,9 @@ async function initApp() {
   // Lamp: what a Mac draws. WebKit compiles the WebGPU path's shaders for 20-50 s before the first frame, and the
   // WebGL 2 one in a few, so it draws with WebGL 2. The clustered street, shop and car lights and the reflections
   // add ~8 s more to the start and are left off. Lamp's runtime draws it at 1920x1080 wherever it's played.
+  const isFirefox = typeof navigator !== 'undefined' && /Firefox\//.test(navigator.userAgent);
   const QUALITY = {
-    antialias: true,
+    antialias: !isFirefox,
     shadows: true,
     streetLights: false,
     reflections: false,
@@ -179,7 +180,7 @@ async function initApp() {
 
   // Island-wide static geometry: chunk & distance-cull the small props, shadow stand-ins for the big casters
   // (scene-culling.js)
-  const cullingRoots = ['ManhattanCityGrid', 'ManhattanCityBlocks', 'ManhattanStreetDetails', 'ManhattanLandmarks', 'Boroughs']
+  const cullingRoots = ['ManhattanCityGrid', 'ManhattanCityBlocks', 'ManhattanStreetDetails', 'ManhattanLandmarks', 'Boroughs', 'RoadMarkings']
     .map((name) => scene.getObjectByName(name))
     .filter(Boolean);
   setupSceneCulling(scene, cullingRoots, lightingSystem.sunLight.shadow);
@@ -227,6 +228,7 @@ async function initApp() {
   let renderPipeline, scenePass, colorGrade, sceneMRT = null;
   if (!QUALITY.reflections) {
     scenePass = pass(scene, cameraSystem.camera);
+    if (scenePass.renderTarget) scenePass.renderTarget.storeMultisampledColorBuffer = false;
     colorGrade = createPostProcessing(renderer, scenePass.getTextureNode('output'), vec3(0), { bloom: QUALITY.bloom });
     renderPipeline = new THREE.RenderPipeline(renderer, colorGrade.outputNode);
   } else {

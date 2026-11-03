@@ -1515,7 +1515,7 @@ function buildCityGrid(scene) {
   // Unified Manhattan Roadway Asphalt Deck (Y = 0.0) following true Manhattan coastline
   const roadMat = createRoadSurfaceMaterial();
   const roadMesh = createFlatPolygonMesh(MANHATTAN_COASTLINE, 0.0, roadMat, true);
-  roadMesh.userData.terrainTolerance = 0.03; // Lamp: close enough to the ground that the road markings stay on it
+  roadMesh.userData.terrainTolerance = 0.06; // Lamp: close enough to the ground that the road markings stay on it
   group.add(roadMesh);
 
   // =========================================================================
@@ -1574,7 +1574,7 @@ function buildCityGrid(scene) {
       group.add(m);
     }
   };
-  mergeInto(curbGeos, curbMat, true);
+  mergeInto(curbGeos, curbMat, false);
   mergeInto(slabGeos, sidewalkMat);
   mergeInto(hedgeGeos, medianHedgeMat, true);
 
@@ -1583,7 +1583,7 @@ function buildCityGrid(scene) {
   const curbInstanced = new THREE.InstancedMesh(unitBox, curbMat, rectSlabs.length);
   swInstanced.receiveShadow = true;
   curbInstanced.receiveShadow = true;
-  curbInstanced.castShadow = true;
+  curbInstanced.castShadow = false;
   // One slab per block, too big to stand level on a hill: setOnTerrain makes them follow the ground
   swInstanced.userData.terrain = 'drape';
   curbInstanced.userData.terrain = 'drape';
@@ -2956,20 +2956,55 @@ function buildManhattanWaterfrontEdge(group, { blockSidewalks, treeSites, lawnMa
   if (wShade) wShade.renderOrder = 1; // over the lane markings (renderOrder -1)
 
   if (paint.idx.length) {
-    const g = new THREE.BufferGeometry();
-    const normals = new Float32Array(paint.pos.length);
-    for (let i = 1; i < normals.length; i += 3) normals[i] = 1;
-    g.setAttribute('position', new THREE.Float32BufferAttribute(paint.pos, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(paint.col, 3));
-    g.setAttribute('side', new THREE.Float32BufferAttribute(paint.side, 2));
-    g.setAttribute('paint', new THREE.Float32BufferAttribute(paint.paint, 3));
-    g.setIndex(paint.idx);
-    const m = new THREE.Mesh(g, createRoadPaintMaterial());
-    m.name = 'ShoreHighwayMarkings';
-    m.receiveShadow = true;
-    m.renderOrder = -1; // like the street markings (js/road-paint.js)
-    group.add(m);
+    const PAINT_CELL = 900;
+    const cells = new Map();
+    for (let t = 0; t < paint.idx.length; t += 3) {
+      const i0 = paint.idx[t];
+      const i1 = paint.idx[t + 1];
+      const i2 = paint.idx[t + 2];
+      const cx = (paint.pos[i0 * 3] + paint.pos[i1 * 3] + paint.pos[i2 * 3]) / 3;
+      const cz = (paint.pos[i0 * 3 + 2] + paint.pos[i1 * 3 + 2] + paint.pos[i2 * 3 + 2]) / 3;
+      const key = Math.floor(cx / PAINT_CELL) * 100000 + Math.floor(cz / PAINT_CELL);
+      let cell = cells.get(key);
+      if (!cell) {
+        cell = { pos: [], col: [], side: [], paint: [], idx: [], remap: new Map() };
+        cells.set(key, cell);
+      }
+      for (const v of [i0, i1, i2]) {
+        let nv = cell.remap.get(v);
+        if (nv === undefined) {
+          nv = cell.pos.length / 3;
+          cell.remap.set(v, nv);
+          cell.pos.push(paint.pos[v * 3], paint.pos[v * 3 + 1], paint.pos[v * 3 + 2]);
+          cell.col.push(paint.col[v * 3], paint.col[v * 3 + 1], paint.col[v * 3 + 2]);
+          cell.side.push(paint.side[v * 2], paint.side[v * 2 + 1]);
+          cell.paint.push(paint.paint[v * 3], paint.paint[v * 3 + 1], paint.paint[v * 3 + 2]);
+        }
+        cell.idx.push(nv);
+      }
+    }
+    const paintMat = createRoadPaintMaterial();
+    let firstPaint = null;
+    for (const cell of cells.values()) {
+      const g = new THREE.BufferGeometry();
+      const normals = new Float32Array(cell.pos.length);
+      for (let i = 1; i < normals.length; i += 3) normals[i] = 1;
+      g.setAttribute('position', new THREE.Float32BufferAttribute(cell.pos, 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(cell.col, 3));
+      g.setAttribute('side', new THREE.Float32BufferAttribute(cell.side, 2));
+      g.setAttribute('paint', new THREE.Float32BufferAttribute(cell.paint, 3));
+      g.setIndex(cell.idx);
+      g.computeBoundingSphere();
+      const m = new THREE.Mesh(g, paintMat);
+      m.name = 'ShoreHighwayMarkings';
+      m.receiveShadow = true;
+      m.renderOrder = -1; // like the street markings (js/road-paint.js)
+      m.userData.cullDistance = 1200;
+      if (firstPaint) m.userData.sharesPipelineWith = firstPaint;
+      else firstPaint = m;
+      group.add(m);
+    }
   }
 
   const dummy = new THREE.Object3D();

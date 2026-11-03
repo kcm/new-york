@@ -155,10 +155,16 @@ function setupSceneCulling(scene, roots, shadow = null) {
   const largeMeshes = [];
   for (const root of roots) {
     root.traverse((o) => {
-      if (!o.isInstancedMesh || !isStaticMesh(o) || o.count < 64 || o.count !== o.instanceMatrix.count) return;
-      if (o.count * triangleCount(o.geometry) < 40000) return;
+      if (o.isMesh && !o.isInstancedMesh && o.userData.cullDistance) {
+        if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        const sphere = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
+        culled.push({ mesh: o, x: sphere.center.x, y: sphere.center.y, z: sphere.center.z, r: sphere.radius, d: o.userData.cullDistance });
+        return;
+      }
+      if (!o.isInstancedMesh || !isStaticMesh(o) || o.count < 32 || o.count !== o.instanceMatrix.count) return;
+      if (o.count * triangleCount(o.geometry) < 8000) return;
       if (!o.boundingSphere) o.computeBoundingSphere();
-      if (o.boundingSphere.radius < 1500) return;
+      if (o.boundingSphere.radius < 800) return;
       chunkable.push(o);
     });
   }
@@ -215,7 +221,7 @@ function setupSceneCulling(scene, roots, shadow = null) {
         if (!o.castShadow || !isStaticMesh(o) || !proxyableMaterial(o.material)) return;
         if (o.isInstancedMesh && o.count !== o.instanceMatrix.count) return;
         const tris = triangleCount(o.geometry) * (o.isInstancedMesh ? o.count : 1);
-        if (tris < 20000) return;
+        if (tris < 8000) return;
         let radius;
         if (o.isInstancedMesh) {
           if (!o.boundingSphere) o.computeBoundingSphere();
@@ -224,7 +230,7 @@ function setupSceneCulling(scene, roots, shadow = null) {
           if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
           radius = o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
         }
-        if (radius > 600) sources.push(o);
+        if (radius > 350) sources.push(o);
       });
     }
 

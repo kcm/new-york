@@ -10,7 +10,7 @@ const WHITE = new THREE.Color(0xe6e2d6);
 const YELLOW = new THREE.Color(0xe8ad22);
 const GREEN = new THREE.Color(0x2a8a4e);
 const STEP = 6; // Lamp: metres between a strip's vertices along it, so it follows the ground
-const HEIGHT = 0.04; // above the asphalt (Lamp: clear of it where the two follow the ground by different cuts, terrain.js)
+const HEIGHT = 0.07; // above the asphalt (Lamp: clear of it where the two follow the ground by different cuts, terrain.js)
 
 function buildRoadPaint(scene, network) {
   const position = [];
@@ -194,23 +194,61 @@ function buildRoadPaint(scene, network) {
     }
   }
 
-  const normal = new Float32Array(position.length);
-  for (let i = 1; i < normal.length; i += 3) normal[i] = 1;
+  // Split road paint into spatial chunks (~900 m cells) so off-screen and distant road markings are culled
+  const PAINT_CELL = 900;
+  const cells = new Map();
+  for (let t = 0; t < index.length; t += 3) {
+    const i0 = index[t];
+    const i1 = index[t + 1];
+    const i2 = index[t + 2];
+    const cx = (position[i0 * 3] + position[i1 * 3] + position[i2 * 3]) / 3;
+    const cz = (position[i0 * 3 + 2] + position[i1 * 3 + 2] + position[i2 * 3 + 2]) / 3;
+    const key = Math.floor(cx / PAINT_CELL) * 100000 + Math.floor(cz / PAINT_CELL);
+    let cell = cells.get(key);
+    if (!cell) {
+      cell = { pos: [], col: [], side: [], paint: [], idx: [], remap: new Map() };
+      cells.set(key, cell);
+    }
+    for (const v of [i0, i1, i2]) {
+      let nv = cell.remap.get(v);
+      if (nv === undefined) {
+        nv = cell.pos.length / 3;
+        cell.remap.set(v, nv);
+        cell.pos.push(position[v * 3], position[v * 3 + 1], position[v * 3 + 2]);
+        cell.col.push(colors[v * 3], colors[v * 3 + 1], colors[v * 3 + 2]);
+        cell.side.push(side[v * 2], side[v * 2 + 1]);
+        cell.paint.push(paint[v * 3], paint[v * 3 + 1], paint[v * 3 + 2]);
+      }
+      cell.idx.push(nv);
+    }
+  }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
-  geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setAttribute('side', new THREE.Float32BufferAttribute(side, 2));
-  geometry.setAttribute('paint', new THREE.Float32BufferAttribute(paint, 3));
-  geometry.setIndex(index);
+  const group = new THREE.Group();
+  group.name = 'RoadMarkings';
+  const mat = createRoadPaintMaterial();
+  let firstChunk = null;
+  for (const cell of cells.values()) {
+    const normal = new Float32Array(cell.pos.length);
+    for (let i = 1; i < normal.length; i += 3) normal[i] = 1;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(cell.pos, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(cell.col, 3));
+    geometry.setAttribute('side', new THREE.Float32BufferAttribute(cell.side, 2));
+    geometry.setAttribute('paint', new THREE.Float32BufferAttribute(cell.paint, 3));
+    geometry.setIndex(cell.idx);
+    geometry.computeBoundingSphere();
 
-  const mesh = new THREE.Mesh(geometry, createRoadPaintMaterial());
-  mesh.name = 'RoadMarkings';
-  mesh.receiveShadow = true;
-  mesh.renderOrder = -1; // under the other see-through ground effects (contact shadows, headlight beams)
-  scene.add(mesh);
-  return mesh;
+    const mesh = new THREE.Mesh(geometry, mat);
+    mesh.receiveShadow = true;
+    mesh.renderOrder = -1; // under the other see-through ground effects (contact shadows, headlight beams)
+    mesh.userData.cullDistance = 1200;
+    if (firstChunk) mesh.userData.sharesPipelineWith = firstChunk;
+    else firstChunk = mesh;
+    group.add(mesh);
+  }
+  scene.add(group);
+  return group;
 }
 
 export { buildRoadPaint };

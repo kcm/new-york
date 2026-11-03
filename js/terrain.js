@@ -106,7 +106,7 @@ function groundHeightNode(worldXZ) {
 // can follow it: a triangle is split (at the middle of its longest edge) while the ground under its edges' middles,
 // quarters and centre strays more than `tolerance` metres from the plane through its corners, down to edges of
 // `minEdge`. Flat ground (the water's edge, level streets) isn't cut at all. Every attribute is interpolated.
-function tessellate(geometry, tolerance = 0.02, minEdge = 2) {
+function tessellate(geometry, tolerance = 0.06, minEdge = 5) {
   const g = geometry.index ? geometry.toNonIndexed() : geometry;
   const names = Object.keys(g.attributes).filter((n) => !g.attributes[n].isInterleavedBufferAttribute);
   const sources = names.map((n) => g.attributes[n]);
@@ -193,7 +193,7 @@ function tessellate(geometry, tolerance = 0.02, minEdge = 2) {
 
 // Every vertex of a world-space geometry raised by the ground under it, cut finer first (tessellate) unless
 // `tolerance` is 0 (lines and points, which can't be cut).
-function drapeGeometry(geometry, tolerance = 0.02) {
+function drapeGeometry(geometry, tolerance = 0.06) {
   if (!grid) return geometry;
   const g = tolerance ? tessellate(geometry, tolerance) : geometry;
   const pos = g.attributes.position;
@@ -349,7 +349,7 @@ const isIdentity = (m) => m.elements.every((v, i) => Math.abs(v - IDENTITY.eleme
 // its own transform is lifted whole by the ground at its position; instances are lifted each by its own, and those
 // marked userData.terrain = 'drape' (big flat slabs) are made into one geometry that follows the ground. Anything
 // marked userData.terrain = 'set' was put on the ground where it was built and is left alone, children included.
-function setOnTerrain(root, tolerance = 0.05) {
+function setOnTerrain(root, tolerance = 0.06) {
   if (!grid || !root) return;
   root.updateMatrixWorld(true);
   const replace = [];
